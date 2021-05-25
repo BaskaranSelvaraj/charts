@@ -7,13 +7,17 @@
 #   imagePullSecrets:
 #     - myRegistryKeySecretName
 
+## Force target Kubernetes version (using Helm capabilites if not set)
+##
+kubeVersion:
+
 ## Bitnami Apache image version
 ## ref: https://hub.docker.com/r/bitnami/apache/tags/
 ##
 image:
   registry: docker.io
   repository: bitnami/apache
-  tag: 2.4.46-debian-10-r18
+  tag: 2.4.46-debian-10-r261
   ## Specify a imagePullPolicy
   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
   ##
@@ -26,9 +30,12 @@ image:
   #   - myRegistryKeySecretName
 
   ## Set to true if you would like to see extra information on logs
-  ## ref:  https://github.com/bitnami/minideb-extras/#turn-on-bash-debugging
   ##
   debug: false
+
+## Extra objects to deploy (value evaluated as a template)
+##
+extraDeploy: []
 
 ## Bitnami Git image version
 ## ref: https://hub.docker.com/r/bitnami/git/tags/
@@ -36,7 +43,7 @@ image:
 git:
   registry: docker.io
   repository: bitnami/git
-  tag: 2.28.0-debian-10-r25
+  tag: 2.31.1-debian-10-r53
   pullPolicy: IfNotPresent
   ## Optionally specify an array of imagePullSecrets.
   ## Secrets must be manually created in the namespace.
@@ -53,24 +60,67 @@ git:
 ##
 # fullnameOverride:
 
+## Add labels to all the deployed resources
+##
+commonLabels: {}
+
+## Add annotations to all the deployed resources
+##
+commonAnnotations: {}
+
 ## Number of Apache replicas to deploy
 ##
 replicaCount: 1
 
+## Pod affinity preset
+## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+## Allowed values: soft, hard
+##
+podAffinityPreset: ""
+
+## Pod anti-affinity preset
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+## Allowed values: soft, hard
+##
+podAntiAffinityPreset: soft
+
+## Node affinity preset
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+## Allowed values: soft, hard
+##
+nodeAffinityPreset:
+  ## Node affinity type
+  ## Allowed values: soft, hard
+  ##
+  type: ""
+  ## Node label key to match
+  ## E.g.
+  ## key: "kubernetes.io/e2e-az-name"
+  ##
+  key: ""
+  ## Node label values to match
+  ## E.g.
+  ## values:
+  ##   - e2e-az1
+  ##   - e2e-az2
+  ##
+  values: []
+
 ## Affinity for pod assignment
 ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+## Note: podAffinityPreset, podAntiAffinityPreset, and  nodeAffinityPreset will be ignored when it's set
 ##
 affinity: {}
 
-## Node labels for pod assignment. Evaluated as a template.
+## Node labels for pod assignment
 ## Ref: https://kubernetes.io/docs/user-guide/node-selection/
 ##
 nodeSelector: {}
 
-## Tolerations for pod assignment. Evaluated as a template.
+## Tolerations for pod assignment
 ## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
 ##
-tolerations: {}
+tolerations: []
 
 ## Get the server static content from a git repository
 ##
@@ -80,6 +130,14 @@ cloneHtdocsFromGit:
   # branch:
   interval: 60
   resources: {}
+  ## Add extra volume mounts for the GIT containers
+  ## Useful to mount keys to connect through ssh. (normally used with extraVolumes)
+  ## E.g:
+  ## extraVolumeMounts:
+  ##   - name: ssh-dir
+  ##     mountPath: /root/.ssh/
+  ##
+  extraVolumeMounts: []
 
 ## Name of a config map with the server static content
 ##
@@ -97,10 +155,24 @@ cloneHtdocsFromGit:
 ##
 # httpdConfConfigMap:
 
+## Additional pod labels
+## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+##
+podLabels: {}
+
 ## Pod annotations
 ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
 ##
 podAnnotations: {}
+
+## Deployment pod host aliases
+## https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
+##
+hostAliases:
+  # Necessary for apache-exporter to work
+  - ip: "127.0.0.1"
+    hostnames:
+      - "status.localhost"
 
 ## Apache pods' resource requests and limits
 ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
@@ -139,12 +211,24 @@ readinessProbe:
   failureThreshold: 6
   successThreshold: 1
 
-## Ingress paramaters
+## Ingress parameters
 ##
 ingress:
   ## Set to true to enable ingress record generation
   ##
   enabled: false
+
+  ## Override API Version (automatically detected if not set)
+  ##
+  apiVersion:
+
+  ## Ingress Path
+  ##
+  path: /
+
+  ## Ingress Path type
+  ##
+  pathType: ImplementationSpecific
 
   ## Set this to true in order to add the corresponding annotations for cert-manager
   ##
@@ -160,6 +244,7 @@ ingress:
   ##
   ## If tls is set to true, annotation ingress.kubernetes.io/secure-backends: "true" will automatically be set
   ## If certManager is set to true, annotation kubernetes.io/tls-acme: "true" will automatically be set
+  ##
   annotations: {}
   #  kubernetes.io/ingress.class: nginx
 
@@ -168,6 +253,7 @@ ingress:
   ## hosts:
   ## - name: example.local
   ##   path: /
+  ##
 
   ## The tls configuration for the ingress
   ## ref: https://kubernetes.io/docs/concepts/services-networking/ingress/#tls
@@ -201,7 +287,7 @@ metrics:
   image:
     registry: docker.io
     repository: bitnami/apache-exporter
-    tag: 0.8.0-debian-10-r136
+    tag: 0.8.0-debian-10-r388
     pullPolicy: IfNotPresent
     ## Optionally specify an array of imagePullSecrets.
     ## Secrets must be manually created in the namespace.
@@ -230,7 +316,43 @@ metrics:
     #   cpu: 100m
     #   memory: 128Mi
 
-## Service paramaters
+## Array to add extra volumes (evaluated as a template)
+##
+extraVolumes: []
+
+## Array to add extra mounts (normally used with extraVolumes, evaluated as a template)
+##
+extraVolumeMounts: []
+
+## An array to add extra env vars
+##
+extraEnvVars: []
+
+## Add init containers to the Apache pods.
+## Example:
+## initContainers:
+##   - name: your-image-name
+##     image: your-image
+##     imagePullPolicy: Always
+##     ports:
+##       - name: portname
+##         containerPort: 1234
+##
+initContainers: {}
+
+## Add sidecars to the Apache pods.
+## Example:
+## sidecars:
+##   - name: your-image-name
+##     image: your-image
+##     imagePullPolicy: Always
+##     ports:
+##       - name: portname
+##         containerPort: 1234
+##
+sidecars: {}
+
+## Service parameters
 ##
 service:
   ## Service type

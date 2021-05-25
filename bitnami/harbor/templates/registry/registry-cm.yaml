@@ -42,8 +42,12 @@ data:
         {{- end }}
       {{- else if eq .Values.persistence.imageChartStorage.type "s3" }}
       s3:
+        {{- if .Values.persistence.imageChartStorage.s3.region }}
         region: {{ .Values.persistence.imageChartStorage.s3.region }}
+        {{- end }}
+        {{- if .Values.persistence.imageChartStorage.s3.bucket }}
         bucket: {{ .Values.persistence.imageChartStorage.s3.bucket }}
+        {{- end }}
         {{- if .Values.persistence.imageChartStorage.s3.regionendpoint }}
         regionendpoint: {{ .Values.persistence.imageChartStorage.s3.regionendpoint }}
         {{- end }}
@@ -153,8 +157,8 @@ data:
       addr: :{{ include "harbor.registry.containerPort" . }}
       {{- if .Values.internalTLS.enabled }}
       tls:
-        certificate: /bitnami/certs/tls.crt
-        key: /bitnami/certs/tls.key
+        certificate: /etc/harbor/ssl/registry/tls.crt
+        key: /etc/harbor/ssl/registry/tls.key
         minimumtls: tls1.2
       {{- end }}
       # set via environment variable
@@ -181,24 +185,17 @@ data:
             ipfilteredby: {{ .Values.registry.middleware.cloudFront.ipfilteredby }}
     {{- end }}
     {{- end }}
-    notifications:
-      endpoints:
-        - name: harbor
-          disabled: false
-          url: http://{{ template "harbor.core" . }}/service/notifications
-          timeout: 3000ms
-          threshold: 5
-          backoff: 1s
   ctl-config.yml: |+
     ---
     {{- if .Values.internalTLS.enabled }}
     protocol: "https"
     port: 8443
     https_config:
-      cert: "/bitnami/certs/tls.crt"
-      key: "/bitnami/certs/tls.key"
+      cert: "/etc/harbor/ssl/registry/tls.crt"
+      key: "/etc/harbor/ssl/registry/tls.key"
     {{- else }}
     protocol: "http"
     port: 8080
     {{- end }}
     log_level: {{ .Values.logLevel }}
+    registry_config: "/etc/registry/config.yml"

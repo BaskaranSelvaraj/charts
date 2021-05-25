@@ -8,6 +8,10 @@
 #     - myRegistryKeySecretName
 #   storageClass: myStorageClass
 
+## Force target Kubernetes version (using Helm capabilites if not set)
+##
+kubeVersion:
+
 ## Number of Discourse & Sidekiq replicas
 ## (Note that you will need ReadWriteMany PVCs for this to work properly)
 ##
@@ -19,7 +23,7 @@ replicaCount: 1
 image:
   registry: docker.io
   repository: bitnami/discourse
-  tag: 2.5.1-debian-10-r6
+  tag: 2.6.7-debian-10-r2
   ## Specify a imagePullPolicy
   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
   ## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
@@ -44,6 +48,11 @@ imagePullSecrets: []
 ## String to fully override discourse.fullname template
 ##
 # fullnameOverride:
+
+## Deployment pod host aliases
+## https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
+##
+hostAliases: []
 
 discourse:
   ## Discourse host to create application URLs. The port will be automatilly included.
@@ -76,7 +85,7 @@ discourse:
   ##
   # command: []
 
-  ## Custom args for the custom commad:
+  ## Custom args for the custom command:
   # args: []
 
   containerSecurityContext: {}
@@ -175,7 +184,7 @@ sidekiq:
   ##
   command: ['/app-entrypoint.sh']
 
-  ## Custom args for the custom commad:
+  ## Custom args for the custom command:
   ##
   args: ['nami', 'start', '--foreground', 'discourse-sidekiq']
 
@@ -316,6 +325,11 @@ persistence:
   # existingClaim: your-claim
   accessMode: ReadWriteOnce
   size: 10Gi
+  ## selector can be used to match an existing PersistentVolume
+  ## selector:
+  ##   matchLabels:
+  ##     app: my-app
+  selector: {}
 
 ## Kubernetes configuration
 ## For minikube, set this to NodePort, elsewhere use LoadBalancer or ClusterIP
@@ -347,7 +361,7 @@ service:
   nodePorts:
     http: ''
 
-## Ingress paramaters
+## Ingress parameters
 ##
 ingress:
   ## Set to true to enable ingress record generation
@@ -359,6 +373,18 @@ ingress:
   ## When the ingress is enabled, a host pointing to this will be created
   ##
   hostname: discourse.local
+  ## Override API Version (automatically detected if not set)
+  ##
+  apiVersion:
+
+  ## Ingress Path
+  ##
+  path: /
+
+  ## Ingress Path type
+  ##
+  pathType: ImplementationSpecific
+
   ## Ingress annotations done as key:value pairs
   ## For a full list of possible ingress annotations, please see
   ## ref: https://github.com/kubernetes/ingress-nginx/blob/master/docs/user-guide/nginx-configuration/annotations.md
@@ -400,6 +426,19 @@ ingress:
   ##   certificate:
   ##
 
+## Only really applicable for deployments with RWO PVs attached
+## If replicas = 1, an update can get "stuck", as the previous pod remains attached to the
+## PV, and the "incoming" pod can never start. Changing the strategy to "Recreate" will
+## terminate the single previous pod, so that the new, incoming pod can attach to the PV
+## Example:
+# updateStrategy:
+#  type: RollingUpdate
+#  rollingUpdate:
+#    maxSurge: 25%
+#    maxUnavailable: 25%
+updateStrategy:
+  type: RollingUpdate
+
 ## Additional pod annotations
 ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
 ##
@@ -418,20 +457,55 @@ commonLabels: {}
 ##
 commonAnnotations: {}
 
-## Node labels for pod assignment. Evaluated as a template.
-## ref: https://kubernetes.io/docs/user-guide/node-selection/
+## Pod affinity preset
+## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+## Allowed values: soft, hard
 ##
-nodeSelector: {}
+podAffinityPreset: ""
 
-## Tolerations for pod assignment. Evaluated as a template.
-## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+## Pod anti-affinity preset
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+## Allowed values: soft, hard
 ##
-tolerations: []
+podAntiAffinityPreset: soft
+
+## Node affinity preset
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+## Allowed values: soft, hard
+##
+nodeAffinityPreset:
+  ## Node affinity type
+  ## Allowed values: soft, hard
+  ##
+  type: ""
+  ## Node label key to match
+  ## E.g.
+  ## key: "kubernetes.io/e2e-az-name"
+  ##
+  key: ""
+  ## Node label values to match
+  ## E.g.
+  ## values:
+  ##   - e2e-az1
+  ##   - e2e-az2
+  ##
+  values: []
 
 ## Affinity for pod assignment
 ## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+## Note: podAffinityPreset, podAntiAffinityPreset, and  nodeAffinityPreset will be ignored when it's set
 ##
 affinity: {}
+
+## Node labels for pod assignment
+## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+##
+nodeSelector: {}
+
+## Tolerations for pod assignment
+## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: []
 
 ##
 ## PostgreSQL chart configuration
@@ -502,7 +576,7 @@ externalDatabase:
   ##
   database: bitnami_application
 
-## Redis chart configuration
+## Redis(TM) chart configuration
 ##
 ## https://github.com/bitnami/charts/blob/master/bitnami/redis/values.yaml
 ##
@@ -512,49 +586,53 @@ redis:
   enabled: true
   ## Use password authentication
   ##
-  usePassword: false
-  ## Redis password (both master and slave)
-  ## Defaults to a random 10-character alphanumeric string if not set and usePassword is true.
-  ## It should always be set using the password value or in the existingSecret to avoid issues
-  ## with Discourse.
-  ## The password value is ignored if existingSecret is set
-  # password:
-  ##
-  ## Name of existing secret object containing the password
-  existingSecret:
-  ##
-  ## Password key to be retrieved from Redis secret
-  existingSecretPasswordKey: 'redis-password'
+  auth:
+    enabled: false
+    ## Redis(TM) password (both master and slave)
+    ## Defaults to a random 10-character alphanumeric string if not set and auth.enabled is true.
+    ## It should always be set using the password value or in the existingSecret to avoid issues
+    ## with Discourse.
+    ## The password value is ignored if existingSecret is set
+    # password:
+    ##
+    ## Name of existing secret object containing the password
+    ##
+    existingSecret:
+    ##
+    ## Password key to be retrieved from Redis(TM) secret
+    ##
+    existingSecretPasswordKey: 'redis-password'
   ##
   ## Cluster settings
   ##
-  cluster:
-    enabled: false
+  architecture: standalone
 
   ##
-  ## Redis Master parameters
+  ## Redis(TM) Master parameters
   ##
   master:
     persistence:
       enabled: true
 
 ##
-## External Redis
+## External Redis(TM)
 ##
 externalRedis:
-  ## Redis host
+  ## Redis(TM) host
   ##
   host: ''
-  ## Redis port
+  ## Redis(TM) port
   ##
   port: 6379
-  ## Redis password for authentication
+  ## Redis(TM) password for authentication
   ## Ignored if existingSecret is set
   ##
   password: ''
   ##
   ## Name of existing secret object containing the password
+  ##
   existingSecret:
   ##
-  ## Password key to be retrieved from Redis secret
+  ## Password key to be retrieved from Redis(TM) secret
+  ##
   existingSecretPasswordKey: 'redis-password'
